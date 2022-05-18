@@ -1,4 +1,4 @@
-# Funct-Enrich-Worfkflow
+# Funct-Enrich-Workflow
 Workflow to reduce GO bias (Gene propagation)
 
 
