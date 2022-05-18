@@ -148,12 +148,29 @@ rownames(match_terms) = c("α = 0.05")
 
 Creamos un grafo con los top términos
 ```{r}
-printGraph(pre_enriquecimiento, GSEA, firstSigNodes = 20, fn.prefix = "gsea", pdfSW = TRUE, useInfo = "all")
-printGraph(pre_enriquecimiento, elim, firstSigNodes = 10, fn.prefix = "elim", pdfSW = TRUE, useInfo = "all")
-printGraph(pre_enriquecimiento, ORA, firstSigNodes = 20, fn.prefix = "ora", pdfSW = TRUE, useInfo = "all")
-printGraph(pre_enriquecimiento, PC, firstSigNodes = 20, fn.prefix = "parentchild", pdfSW = TRUE, useInfo = "all")
-printGraph(pre_enriquecimiento, weight, firstSigNodes = 10, fn.prefix = "weight", pdfSW = TRUE, useInfo = "all")
-printGraph(pre_enriquecimiento, weight01, firstSigNodes = 10, fn.prefix = "weight01", pdfSW = TRUE, useInfo = "all")
+svg(paste0("resultados_durante_enriquecimiento/procesado/gsea_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, GSEA@score, firstSigNodes = 20,  useInfo = "all")
+dev.off()
+
+svg(paste0("resultados_durante_enriquecimiento/procesado/elim_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, elim@score, firstSigNodes = 10,  useInfo = "all")
+dev.off()
+
+svg(paste0("resultados_durante_enriquecimiento/procesado/ora_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, ORA@score, firstSigNodes = 20,  useInfo = "all")
+dev.off()
+
+svg(paste0("resultados_durante_enriquecimiento/procesado/pc_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, PC@score, firstSigNodes = 20,  useInfo = "all")
+dev.off()
+
+svg(paste0("resultados_durante_enriquecimiento/procesado/weight_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, weight@score, firstSigNodes = 10, useInfo = "all")
+dev.off()
+
+svg(paste0("resultados_durante_enriquecimiento/procesado/weight01_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, weight01@score, firstSigNodes = 10, useInfo = "all")
+dev.off()
 ```
 
 
