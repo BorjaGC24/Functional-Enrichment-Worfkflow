@@ -1,0 +1,233 @@
+---
+title: "primera prueba"
+author: "Borja Gómez"
+date: "20/04/2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+Carga de paquetes
+```{r}
+pacman::p_load(simplifyEnrichment,rrvgo,Hmisc, ggplot2,tidyverse,data.table,GOSemSim,GO.db)
+load("resultados_durante_enriquecimiento/procesado/terminos_significativos.rda")
+```
+
+
+Seleccionamos la medida de SS, el algoritmo, el umbral para REVIGO y SE y el organismo.
+```{r}
+medida = "Rel"
+algoritmo = "personalizado"
+umbral_revigo = 0.8
+umbral_se = 0.75
+organismo = "org.Hs.eg.db"
+```
+
+
+
+Cargamos datos base para la construccion de los clusters
+```{r}
+GO_anc = as.list(GOBPANCESTOR)
+GO_def = suppressMessages(AnnotationDbi::select(GO.db,
+                                                keys=(keys(GO.db)),
+                                                columns=c("GOID","TERM","DEFINITION"),
+                                                keytype="GOID"))
+GO_semsim = godata(organismo, ont="BP")
+
+  register_clustering_methods(
+  personalizado = function(mat) binary_cut(mat, try_all_partition_fun = TRUE, cutoff = umbral_se)
+)
+```
+
+
+
+Cargamos la funcion de clusterización
+```{r}
+postprocesado <- function(aproximacion, medida = "Rel", algoritmo = "personalizado", umbral = 0.7, organismo = 'org.Hs.eg.db') {
+      
+  # Cargamos los datos de enriquecimiento
+  a<-go_term_sig[[aproximacion]]
+  go_id = names(a)
+  
+  # Calculamos reducción con simplifyEnrichment
+  mat = GO_similarity(names(a), ont = "BP", db = organismo , measure = medida)
+  df_fisher = simplifyGO(mat, method = algoritmo, plot = FALSE)
+svg(paste0("resultados_durante_enriquecimiento/clusterizado/",aproximacion,"SimplifyEnrichment", ".svg"), width = 8, height = 6)
+ht_clusters(mat, df_fisher$cluster, draw_word_cloud = FALSE, order_by_size = TRUE, column_title = paste0(aproximacion, "SimplifyEnrichment"))
+dev.off()
+  
+# Calculamos reducción con Revigo
+  simMatrix = calculateSimMatrix(names(a), orgdb = organismo, ont = "BP", method = medida)
+  scores <- setNames(-log10(a), names(a))#REDUCIR A -log10 PORQUE CUANTO MAS GRANDE MEJOR
+  reducedTerms = reduceSimMatrix(simMatrix, scores, threshold = umbral, orgdb = organismo)
+svg(paste0("resultados_durante_enriquecimiento/clusterizado/",aproximacion,"REVIGO", ".svg"), width = 8, height = 6)
+ht_clusters(simMatrix, reducedTerms$cluster, draw_word_cloud = FALSE, order_by_size = TRUE, column_title = paste0(aproximacion, "REVIGO"))
+dev.off()
+  output_revigo = reducedTerms[,c(1,7,2)]
+  colnames(output_revigo) = colnames(df_fisher)
+
+  # Creamos un dataframe donde asignamos a cada término nuestro todos sus ancestros
+  x<-stack(GO_anc[go_id])
+  colnames(x) = c("ancestral", "go_id")
+  
+  # Combinamos nuestro resultado de simplifyEnrichment con nuestro dataframe de ancestros para tener la columna "clusters"
+  x2<-left_join( x, df_fisher[,c(3,1)], by = setNames("id", "go_id"))
+  x3<-left_join( x, output_revigo[,c(3,1)], by = setNames("id", "go_id"))
+  x3 = x3[complete.cases(x3),]
+  
+  # Agrupamos creando una dupla entre los ancestros y el cluster en el que aparece de forma que (sigue abajo)
+  x2<-group_by(x2,cluster, ancestral)
+  x3<-group_by(x3,cluster, ancestral)
+  cluster_size = (as.numeric(as.matrix(table(add_count(group_by(df_fisher,cluster))$cluster))))
+  cluster_size_revigo = (as.numeric(as.matrix(table(add_count(group_by(output_revigo,cluster))$cluster))))
+  
+  # Contamos las veces que un ancestro aparece en un cluster concreto, es como responder a la pregunta:
+  # ¿Cuántas veces aparece el ancestro X en el cluster Y?, la respuesta nos la da la nueva columna "n"
+  x2<-add_count(x2) 
+  x3<-add_count(x3) 
+  x2<-ungroup(x2)
+  x3<-ungroup(x3)
+  
+  # Creamos nuevas variables para nuestro dataframe
+  # Usamos la variable GO_semsim que contiene todos los datos de IC del árbol GO par BP
+  x2$IC = GO_semsim@IC[x2$ancestral]
+  x3$IC = GO_semsim@IC[x3$ancestral]
+  
+  # Creamos de nuevo la columna n que nos dice cuantas veces sale cada término padre en un cluster
+  x2<-group_by(x2,cluster, ancestral)
+  x3<-group_by(x3,cluster, ancestral)
+  
+  # Calculamos la importancia de cada término padre en función de las veces que sale y su IC
+  x2$importance = ((x2$n/cluster_size[x2$cluster])*x2$IC^2)
+  x3$importance = ((x3$n/cluster_size_revigo[x3$cluster])*x3$IC^2)
+  
+  #x2$importance = (x2$n*x2$IC^2)
+  #x3$importance = (x3$n*x3$IC^2)
+  
+#ancestros = (as.numeric(as.matrix(table(x2$cluster))))
+#ancestros_revigo = (as.numeric(as.matrix(table(x3$cluster))))
+
+#x2$importance = ((x2$n/ancestros[x2$cluster])*x2$IC^2)
+#x3$importance = ((x3$n/ancestros_revigo[x3$cluster])*x3$IC^2)
+  
+  # Seleccionamos para cada cluster el mejor candidato
+  x2 = x2 %>% group_by(cluster) %>% dplyr::slice(which.max(importance))
+  x3 = x3 %>% group_by(cluster) %>% dplyr::slice(which.max(importance))
+  
+  # Añadimos informacion de los padres seleccionados con el objeto "GO_def" cargado al principio
+  x2 <- left_join(x2, GO_def[,c(1,2)], by = setNames("GOID", "ancestral"))
+  x3 <- left_join(x3, GO_def[,c(1,2)], by = setNames("GOID", "ancestral"))
+  x2 <- x2[,c(1,2,3,4,5,6,7)]
+  x3 <- x3[,c(1,2,3,4,5,6,7)]    
+  x2$cluster_size = cluster_size
+  x3$cluster_size = cluster_size_revigo
+  
+  for(i in 1:nrow(x2)) { 
+    s <- x2[i,8]
+    if(s$cluster_size==1) {
+      patata = left_join(x2[i,], GO_def[,c(1,2)], by = setNames("GOID", "go_id"))
+      patata[,7]=patata[,9]
+      x2[i,] = patata[,-9]
+      #x2[i,5] = (length(which(x2$go_id==x2[i,2]$go_id)))*(GO_semsim@IC[x2[i,2]$go_id]^2)
+      x2[i,1]=x2[i,2]
+      #x2[i,4]=as.numeric(GO_semsim@IC[as.character(x2[i,2])])
+    }
+  }
+  
+  for(i in 1:nrow(x3)) { 
+    s <- x3[i,8]
+    if(s$cluster_size==1) {
+      patata = left_join(x3[i,], GO_def[,c(1,2)], by = setNames("GOID", "go_id"))
+      patata[,7]=patata[,9]
+      x3[i,] = patata[,-9]
+      #x3[i,5] = (length(which(x3$go_id==x3[i,2]$go_id)))*(GO_semsim@IC[x3[i,2]$go_id]^2)
+      x3[i,1]=x3[i,2]
+      #x3[i,4]=as.numeric(GO_semsim@IC[as.character(x3[i,2])])
+    }
+  }
+  
+  x2$n =   (x2$n/x2$cluster_size)*100
+  x3$n =   (x3$n/x3$cluster_size)*100
+  x2 = x2[,-4]
+  x3 = x3[,-4]
+  
+  # Creamos la combinacion de ambos
+  combinacion<-merge(x2, x3, by = intersect("TERM", "TERM"))
+  combinacion<-unique(combinacion[,-c(3,4,5,8,9,10,11)])
+  colnames(combinacion)=c("TERM","Ancestro","Importanica-SE","cluster_size_SE","Importancia-R","cluster_size_revigo")
+  
+  return(list(simplifyenrichment = df_fisher, revigo = reducedTerms, clusterización_se = x2, clusterizacion_revigo = x3, combinacion = combinacion))
+  
+}
+```
+
+
+Procedemos a clusterizar el resultado de enriquecimiento de los 6 métodos
+```{r}
+clust_fisher = postprocesado(1, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_fisher, file = "resultados_durante_enriquecimiento/clusterizado/clust_fisher")
+
+clust_gsea = postprocesado(2, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_gsea, file = "resultados_durante_enriquecimiento/clusterizado/clust_gsea")
+
+clust_elim = postprocesado(3, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_elim, file = "resultados_durante_enriquecimiento/clusterizado/clust_elim")
+
+clust_weight = postprocesado(4, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_weight, file = "resultados_durante_enriquecimiento/clusterizado/clust_weight")
+
+clust_pa = postprocesado(5, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_pa, file = "resultados_durante_enriquecimiento/clusterizado/clust_pa")
+
+clust_weight01 = postprocesado(6, medida = "Rel", algoritmo = "personalizado", umbral = 0.8, organismo = "org.Hs.eg.db")
+save(clust_weight01, file = "resultados_durante_enriquecimiento/clusterizado/clust_weight01")
+
+```
+
+
+Generamos barplot para ver la calidad de la clusterización
+```{r}
+metodo = clust_weight01
+nombre = "clust_weight01"
+
+plot_revigo = metodo$clusterizacion_revigo
+longitud = as.character(c(1:length(plot_revigo$cluster)))
+y<-ggplot(plot_revigo, aes(x = reorder(cluster, -cluster_size), y = cluster_size)) + scale_x_discrete(labels=longitud) + 
+  geom_bar(stat="identity") + ggtitle("Tamaño de los clusters obtenidos con REVIGO") +
+  xlab("Cluster") + ylab("Número de términos")
+
+plot_se = metodo$clusterización_se
+longitud = as.character(c(1:length(plot_se$cluster)))
+z<-ggplot(plot_se, aes(x = reorder(cluster, -cluster_size), y = cluster_size)) + scale_x_discrete(labels=longitud) + 
+  geom_bar(stat="identity") + ggtitle("Tamaño de los clusters obtenidos con SE") +
+  xlab("Cluster") + ylab("Número de términos")  
+
+ggsave(file=paste("resultados_durante_enriquecimiento/clusterizado/", "REVIGO_" , nombre, ".svg", sep = ""), plot=y, width=10, height=8)
+ggsave(file=paste("resultados_durante_enriquecimiento/clusterizado/", "SE_" , nombre, ".svg", sep = ""), plot=z, width=10, height=8)
+
+```
+
+
+Comparamos los clusters generados por los 6 métodos
+
+```{r}
+library(UpSetR)
+listInput<-list(fisher = clust_fisher$clusterizacion_revigo$TERM,elim = clust_elim$clusterizacion_revigo$TERM, weight = clust_weight$clusterizacion_revigo$TERM, gsea = clust_gsea$clusterizacion_revigo$TERM, PA = clust_pa$clusterizacion_revigo$TERM, weight01 = clust_weight01$clusterizacion_revigo$TERM)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq")
+```
+

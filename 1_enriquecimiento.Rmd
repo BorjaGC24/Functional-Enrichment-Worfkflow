@@ -1,0 +1,345 @@
+---
+title: "primera prueba"
+author: "Borja Gómez"
+date: "22/03/2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+Carga de paquetes
+```{r}
+pacman::p_load(genefilter,GEOquery,hgu133plus2.db, topGO, Hmisc, limma)
+```
+
+
+Carga de los datos
+
+```{r}
+old_astro = read.table(file = "datos_sc/old_astro_FM.tsv", sep = '\t', header = TRUE)
+rownames(old_astro) = old_astro$gene_id
+old_astro = old_astro[,-1]
+
+old_neurons = read.table(file = "datos_sc/old_neurons_FM.tsv", sep = '\t', header = TRUE)
+rownames(old_neurons) = old_neurons$gene_id
+old_neurons = old_neurons[,-1]
+```
+
+
+Si debemos realizar también el analisis de expresión diferencial (POR HACER)
+
+```{r}
+#dataset = 
+#grupos = ""
+#geneList <- getPvalues(exprs(dataset), classlabel = eset$grupos , alternative = "two.sided", correction = "BH")
+```
+
+
+Los rownames del dataset deben ser los id de los genes, debe tener una columna de scores "p.adjusted" y una columna de logFC "logFC"
+```{r}
+filtrado_genes <- function(dataset, pvalor =  0.05, fc = 0.5) {
+# Filtrar genes
+sig = dataset[dataset$p.adjusted <= pvalor,]
+
+down = rownames(sig[(sig$logFC < (-fc)),])
+up = rownames(sig[(sig$logFC > (fc)),])
+
+geneList = as.vector(dataset$p.adjusted)
+names(geneList) = row.names(dataset)
+
+# Escogemos los genes up y hacemos análisis
+upList <- factor(as.integer(names(geneList) %in% up))
+names(upList) <- names(geneList)
+
+# Escogemos los genes up y hacemos analisis
+downList <- factor(as.integer(names(geneList) %in% down))
+names(downList) <- names(geneList)
+print(table(upList))
+print(table(downList))
+return(list(upList, downList))
+}
+```
+
+
+Seleccionamos nombre del dataset, pvalor, logFC, organismo y anotación
+```{r}
+dataset = old_neurons
+pvalor = 0.05
+fc = 0
+organismo = "org.Hs.eg.db"
+notacion = "symbol"
+```
+
+
+Elegimos si hacer un enriquecimiento de los genes up o down
+```{r}
+#genes_interes <- filtrado_genes(dataset = dataset, pvalor =  pvalor, fc = fc)[[1]] # Genes up
+genes_interes <- filtrado_genes(dataset = dataset, pvalor =  pvalor, fc = fc)[[2]]  #Genes down
+
+pre_enriquecimiento<-new("topGOdata", 
+                          ontology = "BP", 
+                          allGenes = genes_interes, 
+                          geneSel = function(x)(x == 1), 
+                          nodeSize = 5,
+                          annot = annFUN.org,
+                          mapping = organismo,
+                          ID = notacion)
+```
+
+
+Realizamos los enriquecimientos
+```{r}
+# Enriquecimiento para ORA
+ORA <- runTest(pre_enriquecimiento, algorithm = "classic", statistic = "fisher")
+ORA@score = p.adjust(ORA@score, method = "BH")
+
+# Enriquecimiento para GSEA
+GSEA <- runTest(pre_enriquecimiento, algorithm = "classic", statistic = "ks")
+GSEA@score = p.adjust(GSEA@score, method = "BH")
+
+# Enriquecimiento para Parent-Child
+PC <- runTest(pre_enriquecimiento, algorithm = "parentchild", statistic = "fisher", joinFun = "union") 
+PC@score = p.adjust(PC@score, method = "BH")
+
+# Enriquecimiento para los métodos topológicos elim, weight y weight01
+elim <- runTest(pre_enriquecimiento, algorithm = "elim", statistic = "fisher", cutOff = pvalor)
+weight <- runTest(pre_enriquecimiento, algorithm = "weight", statistic = "fisher")
+weight01 <- runTest(pre_enriquecimiento, algorithm = "weight01", statistic = "fisher")
+```
+
+
+Creamos las tablas de resultados
+```{r}
+ORA_t= GenTable(pre_enriquecimiento, ORA = ORA,  topNodes = length(score(ORA)))
+GSEA_t= GenTable(pre_enriquecimiento, GSEA = GSEA,  topNodes = length(score(GSEA)))
+elim_t= GenTable(pre_enriquecimiento, elim = elim,  topNodes = length(score(elim)))
+weight_t= GenTable(pre_enriquecimiento, weight = weight,  topNodes = length(score(weight)))
+weight01_t= GenTable(pre_enriquecimiento, weight01 = weight01,  topNodes = length(score(weight01)))
+PC_t= GenTable(pre_enriquecimiento, PC = PC,  topNodes = length(score(PC)))
+
+lista_resultados = list(ORA_t)
+```
+
+
+Términos totales de cada método
+```{r}
+aciertos = c(sum(ORA@score<pvalor),sum(GSEA@score<pvalor),sum(elim@score<pvalor),sum(weight@score<pvalor),sum(PC@score<pvalor), sum(weight01@score<pvalor))
+
+match_terms = data.frame(aciertos)
+rownames(match_terms) = c("Fisher", "GSEA", "elim", "weight", "Parent-Child", "weight01")
+match_terms = as.matrix(t(match_terms))
+rownames(match_terms) = c("α = 0.05")
+```
+
+
+Creamos un grafo con los top términos
+```{r}
+printGraph(pre_enriquecimiento, GSEA, firstSigNodes = 20, fn.prefix = "gsea", pdfSW = TRUE, useInfo = "all")
+printGraph(pre_enriquecimiento, elim, firstSigNodes = 10, fn.prefix = "elim", pdfSW = TRUE, useInfo = "all")
+printGraph(pre_enriquecimiento, ORA, firstSigNodes = 20, fn.prefix = "ora", pdfSW = TRUE, useInfo = "all")
+printGraph(pre_enriquecimiento, PC, firstSigNodes = 20, fn.prefix = "parentchild", pdfSW = TRUE, useInfo = "all")
+printGraph(pre_enriquecimiento, weight, firstSigNodes = 10, fn.prefix = "weight", pdfSW = TRUE, useInfo = "all")
+printGraph(pre_enriquecimiento, weight01, firstSigNodes = 10, fn.prefix = "weight01", pdfSW = TRUE, useInfo = "all")
+```
+
+
+Comprobamos la distribución de sus p-valores
+```{r}
+pdf("distribución_pvalor.pdf")
+hist(ORA@score, 100, xlab = "p-values", main = "Distribución p-valores para Fisher")
+abline(v=0.01, col="blue")
+hist(weight@score, 100, xlab ="p-values", main ="Distribución p-valores para weight")
+abline(v=0.01, col="blue")
+hist(GSEA@score, 100, xlab = "p-values",main ="Distribución p-valores para GSEA")
+abline(v=0.01, col="blue")
+hist(elim@score, 100, xlab ="p-values", main ="Distribución p-valores para elim")
+abline(v=0.01, col="blue")
+hist(PC@score, 100, xlab = "p-values",main ="Distribución p-valores para Parent Child")
+abline(v=0.01, col="blue")
+hist(weight01@score, 100, xlab = "p-values",main ="Distribución p-valores para Weight01")
+abline(v=0.01, col="blue")
+dev.off()
+```
+
+
+Creamos una matriz de correlación
+```{r}
+a = union(names(ORA@score)[c(1:100)], names(GSEA@score)[c(1:100)])
+a = union(a, names(elim@score)[c(1:100)])
+a = union(a, names(weight@score)[c(1:100)])
+a = union(a, names(PC@score)[c(1:100)])
+a = union(a, names(weight01@score)[c(1:100)])
+a = data.frame(a)
+colnames(a)= "GO.ID"
+
+correlacion.final = data.frame(ORA@score[a$GO.ID],
+                               GSEA@score[a$GO.ID],
+                               elim@score[a$GO.ID],
+                               weight@score[a$GO.ID],
+                               PC@score[a$GO.ID],
+                               weight01@score[a$GO.ID])
+colnames(correlacion.final)=c("Fisher", "GSEA", "elim", "weight", "parent_child", "weight01")
+
+i = c(1,2,3,4,5,6)
+correlacion.final[,i] = apply(correlacion.final[,i],2,function(x) as.numeric(as.character(x)))
+
+matrix1<-rcorr(as.matrix(correlacion.final))
+heatmap(matrix1$r)
+```
+
+
+Comprobamos como de similares son los resultados
+```{r}
+# Gráfica p-valor
+gstat <- termStat(pre_enriquecimiento, rownames(correlacion.final))  # Nos da las estadisticas de los términos 
+gSize <- gstat$Annotated / max(gstat$Annotated) * 4 # Fórmula para asignar el tamaño de cada término en proporción: Genes anotados/Max(genes anotados en un término)*4
+
+colMap <- function(x) {
+  .col <- rep(rev(heat.colors(length(unique(x)))), time = table(x))
+  return(.col[match(1:length(x), order(x))])
+}
+
+# Asigna un grosor en funcion de la proporción de genes de nuestro array anotados
+# en el término GO y asigna un color en funcion de la significancia de estos términos
+
+gCol <- colMap(gstat$Significant/gstat$Annotated) # Asigna un colo en función de cuantos genes significativos tiene cada término
+
+pdf("graficos_relaciones.pdf")
+
+# Creamos un gráfico
+plot(correlacion.final$Fisher, correlacion.final$GSEA, xlab = "Fisher p-value", ylab = "GSEA p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$Fisher, correlacion.final$elim, xlab = "Fisher p-value", ylab = "elim p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$Fisher, correlacion.final$weight, xlab = "Fisher p-value", ylab = "weight p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$Fisher, correlacion.final$parent_child, xlab = "Fisher p-value", ylab = "parent_child p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$GSEA, correlacion.final$elim, xlab = "GSEA p-value", ylab = "elim p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$GSEA, correlacion.final$weight, xlab = "GSEA p-value", ylab = "weight p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$GSEA, correlacion.final$parent_child, xlab = "GSEA p-value", ylab = "parent_child p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$elim, correlacion.final$weight, xlab = "elim p-value", ylab = "weight p-value",
+     pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$elim, correlacion.final$parent_child, xlab = "elim p-value", ylab = "parent_child p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight, correlacion.final$parent_child, xlab = "weight p-value", ylab = "parent_child p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight01, correlacion.final$Fisher, xlab = "weight01 p-value", ylab = "Fisher p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight01, correlacion.final$GSEA, xlab = "weight01 p-value", ylab = "GSEA p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight01, correlacion.final$elim, xlab = "weight01 p-value", ylab = "elim p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight01, correlacion.final$weight, xlab = "weight01 p-value", ylab = "weight p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+plot(correlacion.final$weight01, correlacion.final$parent_child, xlab = "weight01 p-value", ylab = "parent_child p-value", pch = 19, cex = gSize, col = gCol)
+abline(v = 0.01, h = 0.01, col = "darkgreen")
+dev.off() 
+
+```
+
+
+Generamos barplot con los 30 términos más significativos
+```{r}
+png(paste0("Fisher", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, ORA, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," ORA for enrichment analysis"))
+dev.off()
+png(paste0("GSEA", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, GSEA, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," GSEA of enrichment analysis"))
+dev.off()
+png(paste0("elim", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, elim, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," elim enrichment analysis"))
+dev.off()
+png(paste0("weight", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, weight, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," weight enrichment analysis"))
+dev.off()
+png(paste0("PC", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, PC, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," PC enrichment analysis"))
+dev.off()
+png(paste0("weight01", ".png"), width = 8, height = 6, units = "in", res = 300)
+enrichment_barplot(pre_enriquecimiento, weight01, showTerms = 30, numChar = 50, orderBy = "Scores", 
+		   title = paste0("GO-", "BP"," weight01 enrichment analysis"))
+dev.off()
+```
+
+
+Asociamos a cada término los genes de nuestro estudio anotados
+```{r}
+sigGenes <- sigGenes(pre_enriquecimiento)
+
+AnnoList <- lapply(ORA_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+ORA_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[1]] = ORA_t
+
+AnnoList <- lapply(GSEA_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+GSEA_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[2]] = GSEA_t
+
+AnnoList <- lapply(elim_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+elim_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[3]] = elim_t
+
+AnnoList <- lapply(weight_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+weight_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[4]] = weight_t
+
+
+AnnoList <- lapply(PC_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+PC_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[5]] = PC_t
+
+
+AnnoList <- lapply(weight01_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+weight01_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[6]] = weight01_t
+
+```
+
+Guardamos todos los datos 
+```{r}
+sig_go_fisher = ORA@score[ORA@score<=pvalor]
+sig_go_gsea = GSEA@score[GSEA@score<=pvalor]
+sig_go_elim = elim@score[elim@score<=pvalor]
+sig_go_weight = weight@score[weight@score<=pvalor]
+sig_go_PA = PC@score[PC@score<=pvalor]
+sig_go_weight01 = weight01@score[weight01@score<=pvalor]
+
+go_term_sig = list(sig_go_fisher, sig_go_gsea, sig_go_elim, sig_go_weight, sig_go_PA,sig_go_weight01)
+save(go_term_sig, file = "resultados_durante_enriquecimiento/procesado/terminos_significativos.rda")
+save(lista_resultados, file = "resultados_durante_enriquecimiento/procesado/lista_dataframes_resultados.rda")
+save(matrix1, file = "resultados_durante_enriquecimiento/procesado/matrix.rda")
+```
