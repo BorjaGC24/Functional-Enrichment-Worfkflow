@@ -1,3 +1,8 @@
+<style>
+body {
+text-align: justify}
+</style>
+
 # F.Enrichment Workflow
 Comparación entre métodos clásicos (ORA, GSEA) y métodos tipo MEA (elim, weight, weight01 y PC) para el control de la propagación génica.
 
