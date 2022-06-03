@@ -1,0 +1,253 @@
+---
+title: "primera prueba"
+author: "Borja Gómez"
+date: "20/04/2022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+Con este script obtenemos simplifemente graficos sobre los resultados de enriquecimiento funcional. Segun si ejecutamos el chunk A o chuck B cargaremos los datos procesados con WSC o sin procesar respectivamente
+
+### Chunk A
+
+```{r}
+library(ggplot2)
+library("plotrix")
+library(UpSetR)
+load("resultados_durante_enriquecimiento/procesado/lista_dataframes_resultados.rda")
+load("resultados_durante_enriquecimiento/procesado/terminos_significativos.rda")
+
+guardado = "procesado"
+nombre = "lista_dataframes_resultados.rda"
+```
+
+
+### Chunk B
+```{r}
+library(ggplot2)
+library("plotrix")
+library(UpSetR)
+load("resultados_durante_enriquecimiento/procesado_wsc/filtrado_lista_dataframes_resultados.rda")
+lista_resultados = nueva_lista_filtrado
+load("resultados_durante_enriquecimiento/procesado_wsc/terminos_significativos_filtrados.rda")
+go_term_sig = go_term_sig_wsc_filtrado
+
+guardado = "procesado_wsc"
+nombre = "filtrado_lista_dataframes_resultados.rda"
+```
+
+
+### SELECCIONAR PVALOR
+```{r}
+pvalor = 0.05
+```
+
+
+### Heatmap PO
+
+Creamos un heatmaps con las similitudes entre los resultados obtenidos, comparando la coincidendia en los términos detectados como enriquecidos.
+```{r}
+fisher = go_term_sig[[1]]
+gsea = go_term_sig[[2]]
+elim = go_term_sig[[3]]
+weight = go_term_sig[[4]]
+pc = go_term_sig[[5]]
+weight01 = go_term_sig[[6]]
+
+PO<-function(x,y){
+  comun = length(intersect(names(x),names(y)))
+  return((((comun/length(x)+(comun/length(y)))/2)*100))
+}
+
+m_ORA = c(PO(fisher,fisher),PO(fisher,gsea),PO(fisher,elim),PO(fisher,weight),PO(fisher,pc),PO(fisher,weight01))
+m_GSEA = c(PO(gsea,fisher),PO(gsea,gsea),PO(gsea,elim),PO(gsea,weight),PO(gsea,pc),PO(gsea,weight01))
+m_elim = c(PO(elim,fisher),PO(elim,gsea),PO(elim,elim),PO(elim,weight),PO(elim,pc),PO(elim,weight01))
+m_weight = c(PO(weight,fisher),PO(weight,gsea),PO(weight,elim),PO(weight,weight),PO(weight,pc),PO(weight,weight01))
+m_PC = c(PO(pc,fisher),PO(pc,gsea),PO(pc,elim),PO(pc,weight),PO(pc,pc),PO(pc,weight01))
+m_weight01 = c(PO(weight01,fisher),PO(weight01,gsea),PO(weight01,elim),PO(weight01,weight),PO(weight01,pc),PO(weight01,weight01))
+
+
+matriz = rbind(m_ORA, m_GSEA, m_elim, m_weight, m_PC, m_weight01)
+rownames(matriz) = c("ORA", "GSEA", "elim","weight", "PC", "weight01")
+colnames(matriz) = c("ORA", "GSEA", "elim","weight", "PC", "weight01")
+svg(paste0("resultados_durante_enriquecimiento/", guardado, "/heatmap_po", ".svg"), width = 8, height = 6)#, units = "in", res = 300)
+heatmap(matriz)
+dev.off()
+```
+
+
+### Gráficas
+
+Gráfica de número total de términos por método, número medio de genes/termino por método, comparación grupo clásico, comparación grupo control y comparación global
+
+Gráfica con los términos totales
+```{r}
+#A.1 Terminos totales
+
+fisher = lista_resultados[[1]][as.numeric(lista_resultados[[1]]$ORA)<=pvalor,]
+gsea<-lista_resultados[[2]][as.numeric(lista_resultados[[2]]$GSEA)<=pvalor,]
+elim<-lista_resultados[[3]][as.numeric(lista_resultados[[3]]$elim)<=pvalor,]
+weight<-lista_resultados[[4]][as.numeric(lista_resultados[[4]]$weight)<=pvalor,]
+pa<-lista_resultados[[5]][as.numeric(lista_resultados[[5]]$PC)<=pvalor,]
+weight01<-lista_resultados[[6]][as.numeric(lista_resultados[[6]]$weight01)<=pvalor,]
+
+patata = list(fisher, gsea, elim, weight, pa, weight01)
+
+terminos = unlist(lapply(patata, function(metodo) as.numeric(dim(metodo))[1]))
+names(terminos) = c("ORA", "GSEA", "elim","weight","PC", "weight01")
+
+svg(paste0("resultados_durante_enriquecimiento/", guardado, "/numero_terminos", ".svg"), width = 8, height = 6)
+barplot(terminos, main = "Cantidad de términos para cada método", ylab = "Número de términos")
+dev.off()
+```
+
+Gráfica con el tamaño medio de los términos
+```{r}
+#B
+medias <- data.frame(
+  name=c("ORA", "GSEA", "elim", "weight", "PC", "weight01"),
+  value=c(mean(fisher$Annotated), mean(gsea$Annotated), mean(elim$Annotated), mean(weight$Annotated), mean(pa$Annotated), mean(weight01$Annotated)),
+  se=c(std.error(fisher$Annotated), std.error(gsea$Annotated), std.error(elim$Annotated), std.error(weight$Annotated), std.error(pa$Annotated), std.error(weight01$Annotated))
+)
+medias$name = factor(medias$name, levels = medias$name)
+
+a<-ggplot(medias) +
+    geom_bar( aes(x=name, y=value), stat="identity", fill="black", alpha=0.7) +
+    geom_errorbar( aes(x=name, ymin=value-se, ymax=value+se), width=0.2, colour="black", alpha=0.9, size=0.8) +
+    labs(y= "Genes en cada término", x = "Método", title = "Tamaño medio de los términos")
+
+ggsave(file=paste0("resultados_durante_enriquecimiento/", guardado, "/tamaño_terminos.svg"), plot=a, width=10, height=8)
+```
+
+
+UpSet plot para a) Métodos de control de redundancia, b) Métodos tradicionales, c) Todos los métodos
+```{r}
+listInput<-list(elim = elim$GO.ID, weight = weight$GO.ID,  weight01 = weight01$GO.ID, PC = pa$GO.ID)
+svg(paste0("resultados_durante_enriquecimiento/", guardado, "/comparacion_control", ".svg"), width = 8, height = 6)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq")
+dev.off()
+
+
+listInput<-list(fisher = fisher$GO.ID, gsea = gsea$GO.ID)
+svg(paste0("resultados_durante_enriquecimiento/", guardado, "/comparacion_clasicos", ".svg"), width = 8, height = 6)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq")#, group.by = "sets")
+dev.off()
+
+
+listInput<-list(fisher = fisher$GO.ID,elim = elim$GO.ID, weight = weight$GO.ID, 
+                gsea = gsea$GO.ID, PC = pa$GO.ID, weight01 = weight01$GO.ID)
+svg(paste0("resultados_durante_enriquecimiento/", guardado, "/comparacion_todos", ".svg"), width = 8, height = 6)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq", nsets = 6)
+dev.off()
+```
+
+
+Calculamos el enriquecimiento de los términos y lo añadimos a resultados
+```{r}
+fisher$enrichment = fisher$Significant/fisher$Expected
+fisher = fisher[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[1]] = fisher
+
+gsea$enrichment = gsea$Significant/gsea$Expected
+gsea = gsea[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[2]] = gsea
+
+pa$enrichment = pa$Significant/pa$Expected
+pa = pa[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[5]] = pa
+
+elim$enrichment = elim$Significant/elim$Expected
+elim = elim[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[3]] = elim
+
+weight$enrichment = weight$Significant/weight$Expected
+weight = weight[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[4]] = weight
+
+weight01$enrichment = weight01$Significant/weight01$Expected
+weight01 = weight01[,c(1,2,3,4,5,8,6,7)]
+lista_resultados[[6]] = weight01
+
+
+save(lista_resultados, file = paste0("resultados_durante_enriquecimiento/", guardado, "/",nombre))
+```
+
+
+Creamos una gráfica para cada método con sus 10 términos más enriquecidos
+
+```{r}
+metodo = list((fisher[order(-fisher$enrichment),][1:10,]),
+           gsea[order(-gsea$enrichment),][1:10,],
+           elim[order(-elim$enrichment),][1:10,],
+           weight[order(-weight$enrichment),][1:10,],
+           pa[order(-pa$enrichment),][1:10,],
+           weight01[order(-weight01$enrichment),][1:10,])
+
+nombres = c("ORA", "GSEA", "elim", "weight", "PC", "weight01")
+
+barplot_enriquecimiento = function(metodo, nombres){
+  
+  for (i in 1:length(metodo)){
+    data = metodo[[i]]$enrichment
+    names(data) = metodo[[i]]$Term
+    data = sort(data)
+
+    svg(paste0("resultados_durante_enriquecimiento/", guardado, "/enriquecimiento", nombres[[i]], ".svg"), width = 8, height = 6)
+    par(mar=c(5.1, 18 ,4.1 ,2.1))
+    barplot(data,las=1,horiz=TRUE, col = c("#666547", "#fb2e01", "#6fcb9f", "#ffe28a", '#fffeb3'), 
+        xlab="Ratio de enriquecimiento", main=paste0("Top 10 términos más enriquecidos ",nombres[[i]]))
+    #text(a, x = 4, metodo[[1]]$enrichment) # Si quiero añadir texto, guardar el barplot como a<-
+        dev.off()
+  }
+}
+barplot_enriquecimiento(metodo, nombres)
+```
+
+Calculamos el enriquecimiento medio para cada método
+
+```{r}
+library("plotrix")
+
+datos <- data.frame(
+  name=c("ORA", "GSEA", "elim", "weight", "PC", "weight01"),
+  enriquecimiento<-c(mean(fisher$enrichment),
+                                mean(gsea$enrichment),
+                                mean(elim$enrichment),
+                                mean(weight$enrichment),
+                                mean(pa$enrichment),
+                                mean(weight01$enrichment)),
+  standar_error =c(std.error(fisher$enrichment), std.error(gsea$enrichment), std.error(elim$enrichment), std.error(weight$enrichment), std.error(pa$enrichment), std.error(weight01$enrichment))
+)
+datos$name = factor(datos$name, levels = datos$name)
+
+a<-ggplot(datos) +
+    geom_bar( aes(x=name, y=enriquecimiento), stat="identity", fill="black", alpha=0.7) +
+    geom_errorbar( aes(x=name, ymin=enriquecimiento-standar_error, ymax=enriquecimiento+standar_error), width=0.2, colour="black", alpha=0.9, size=0.8) +
+    labs(y= "Ratio de enriquecimiento", x = "Método", title = "Enriquecimiento medio de los términos de cada método")
+
+ggsave(file=paste0("resultados_durante_enriquecimiento/", guardado, "/enriquecimiento_metodos.svg"), plot=a, width=10, height=8)
+```
+
+
+
+
+
+
+
+
+
