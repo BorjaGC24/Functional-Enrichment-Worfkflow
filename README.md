@@ -2,4 +2,5 @@
 Workflow to reduce GO bias (Gene propagation)
 
 
-![organizacion_github](https://user-images.githubusercontent.com/79335017/171848173-c1adb0b8-36fa-4f96-94e8-209a9389ca99.jpg)
+
+![estructura_github](https://user-images.githubusercontent.com/79335017/171916090-2b960937-be17-4132-8f8a-7a27851c62f5.svg)
