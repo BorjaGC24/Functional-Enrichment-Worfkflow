@@ -35,7 +35,8 @@ for (numero in 1:length(metodos)){
   
   lista<-a$Genes
   names(lista) = a$GO.ID
-  cost = as.numeric(a[,length(a)-1])
+  #cost = as.numeric(a[,length(a)-1])
+  cost = (1/(-log(as.numeric(a[,length(a)-1]))))
   
   match<-weightedSetCover(lista, cost, length(lista), nThreads = 8)
   patata <- a[a$GO.ID %in% match$topSets,]
@@ -69,7 +70,8 @@ for (numero in 1:length(metodos)){
   a = a[a$Annotated < 1000,] 
   lista<-a$Genes
   names(lista) = a$GO.ID
-  cost = as.numeric(a[,length(a)-1])
+  #cost = as.numeric(a[,length(a)-1])
+  cost = (1/(-log(as.numeric(a[,length(a)-1]))))
   
   match<-weightedSetCover(lista, cost, length(lista), nThreads = 8)
   patata <- a[a$GO.ID %in% match$topSets,]
