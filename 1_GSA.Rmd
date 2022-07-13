@@ -1,0 +1,327 @@
+---
+title: "Script final"
+author: "Borja Gómez"
+date: "18/0362022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+Cargamos los paquetes
+```{r}
+pacman::p_load(topGO,stringr, dplyr)
+```
+
+```{bash}
+mkdir analisis
+mkdir analisis/enriquecimiento
+```
+
+
+Cargamos los datos
+```{r}
+# Cargamos el fichero con los genes DE
+ruta_datos = "datos/new_neurons_FM.tsv"
+dataset = read.table(file = ruta_datos, sep = '\t', header = TRUE)
+rownames(dataset) = dataset$gene_id
+dataset = dataset[,-1]
+```
+
+Establecemos las variables base
+```{r}
+pvalor = 0.05
+fc = 0.5
+organismo = "org.Hs.eg.db"
+notacion = "symbol"
+opcion = "up"
+```
+
+
+### OPCION GSEA ###
+```{r}
+dataset_gsea<-na.omit(dataset) # quitamos NA
+
+# CON LAS SIGUIENTES LINEAS SUSTITUIMOS VALORES INFINITOS
+temporal <-dataset_gsea[is.finite(rowSums(dataset_gsea)),]
+
+max = temporal[which.max(temporal$logFC),4]
+max_2 = sort(temporal$logFC)[length(temporal$logFC) - 1]  
+formula_up = (max + (max-max_2))
+dataset_gsea$logFC<-replace(dataset_gsea$logFC,dataset_gsea$logFC==Inf,formula_up)
+
+min = temporal[which.min(temporal$logFC),4]
+min_2 = sort(temporal$logFC)[2] 
+formula_up = (min + (min-min_2))
+dataset_gsea$logFC<-replace(dataset_gsea$logFC,dataset_gsea$logFC==-Inf,formula_up)
+
+# Preparamos una combinación de p-valor con logFC para usar como score y ordenar 
+genes_up = dataset_gsea 
+genes_interes = genes_up$p.value
+names(genes_interes) = rownames(genes_up)
+
+genes_interes = sign(genes_up$logFC)*-log10(genes_interes)
+genes_interes = sort(genes_interes, decreasing = TRUE)
+
+### SI HAY INF ###
+temporal <-genes_interes[is.finite(genes_interes)]
+max = temporal[which.max(temporal)]
+max_2 = sort(temporal)[length(temporal) - 1]  
+formula_up = (max + (max-max_2))
+genes_interes_gsea<-replace(genes_interes,genes_interes==Inf,formula_up)
+
+# Generamos el objeto topGO para realizar el enriquecimiento
+pre_enriquecimiento_gsea <-new("topGOdata", 
+                         ontology = "BP", 
+                         allGenes = genes_interes_gsea, 
+                         geneSel = function(x){return(x <= 0.05)},# Para GSEA no se tiene en cuenta este parámetro
+                         nodeSize = 5,
+                         annot = annFUN.org,
+                         mapping = organismo,
+                         ID = notacion)
+```
+
+Realizamos el enriquecimiento
+```{r}
+GSEA <- runTest(pre_enriquecimiento_gsea, algorithm = "classic", statistic = "ks", cutOff = pvalor, scoreOrder="decreasing")
+GSEA_t= GenTable(pre_enriquecimiento_gsea, GSEA = GSEA,  topNodes = length(score(GSEA)))
+
+# Modificamos internamente los pvalores del resultado para sustituirlos por los pvalores ajustados
+a<-GSEA_t
+pvalores.nuevos = sort(GSEA@score)
+names(pvalores.nuevos) = names(sort(GSEA@score))
+a$GSEA = pvalores.nuevos
+a$GSEA = p.adjust(a$GSEA, method = "BH")
+
+# Devuelvo los pvalores
+vector = as.numeric(as.vector(a$GSEA))
+names(vector) = a$GO.ID
+vector = vector[order(names(vector))]
+GSEA@score = vector
+GSEA_t= GenTable(pre_enriquecimiento_gsea, GSEA = GSEA,  topNodes = length(score(GSEA)))
+
+table(GSEA_t$GSEA<0.05)
+```
+
+### OPCION ORA Y ANALISIS PT ###
+```{r}
+filtrado_genes <- function(dataset, pvalor =  0.05, fc = 0.5) {
+# Filtrar genes
+sig = dataset[dataset$p.adjusted <= pvalor,]
+
+down = rownames(sig[(sig$logFC < (-fc)),])
+up = rownames(sig[(sig$logFC > (fc)),])
+
+geneList = as.vector(dataset$p.adjusted)
+names(geneList) = row.names(dataset)
+
+# Escogemos los genes up y hacemos análisis
+upList <- factor(as.integer(names(geneList) %in% up))
+names(upList) <- names(geneList)
+
+# Escogemos los genes up y hacemos analisis
+downList <- factor(as.integer(names(geneList) %in% down))
+names(downList) <- names(geneList)
+print(table(upList))
+print(table(downList))
+return(list(upList, downList))
+}
+
+seleccion = function(opcion, datos){
+  if(opcion == "up") { datos[[1]] }
+  else if(opcion == "down") {datos[[2]] }
+}
+
+genes_interes <- filtrado_genes(dataset = dataset, pvalor =  pvalor, fc = fc)
+
+datos = filtrado_genes(dataset = dataset, pvalor =  pvalor, fc = fc)
+genes_interes = seleccion(opcion = opcion, datos)
+
+pre_enriquecimiento<-new("topGOdata", 
+                          ontology = "BP", 
+                          allGenes = genes_interes, 
+                          geneSel = function(x)(x == 1), 
+                          nodeSize = 5,
+                          annot = annFUN.org,
+                          mapping = organismo,
+                          ID = notacion)
+```
+
+
+```{r}
+ORA <- runTest(pre_enriquecimiento, algorithm = "classic", statistic = "fisher", cutOff = pvalor)
+ORA@score = p.adjust(ORA@score, method = "BH")
+
+PC <- runTest(pre_enriquecimiento, algorithm = "parentchild", statistic = "fisher", joinFun = "intersect", cutOff = pvalor) 
+elim <- runTest(pre_enriquecimiento, algorithm = "elim", statistic = "fisher", cutOff = pvalor)
+weight <- runTest(pre_enriquecimiento, algorithm = "weight", statistic = "fisher", cutOff = pvalor)
+weight01 <- runTest(pre_enriquecimiento, algorithm = "weight01", statistic = "fisher", cutOff = pvalor)
+
+ORA_t= GenTable(pre_enriquecimiento, ORA = ORA,  topNodes = length(score(ORA)))
+
+
+PC_t= GenTable(pre_enriquecimiento, PC = PC,  topNodes = length(score(PC)))
+PC_t$PC = sort(PC@score)
+elim_t= GenTable(pre_enriquecimiento, elim = elim,  topNodes = length(score(elim)))
+elim_t$elim = sort(elim@score)
+weight_t= GenTable(pre_enriquecimiento, weight = weight,  topNodes = length(score(weight)))
+weight_t$weight = sort(weight@score)
+weight01_t= GenTable(pre_enriquecimiento, weight01 = weight01,  topNodes = length(score(weight01)))
+weight01_t$weight01 = sort(weight01@score)
+
+lista_resultados = list(ORA_t)
+```
+
+
+Generación de grafos
+```{r}
+svg(paste0("analisis/enriquecimiento/gsea_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento_gsea, GSEA@score, firstSigNodes = 20,  useInfo = "all")
+dev.off()
+
+svg(paste0("analisis/enriquecimiento/elim_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, elim@score, firstSigNodes = 10,  useInfo = "all")
+dev.off()
+
+svg(paste0("analisis/enriquecimiento/ora_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, ORA@score, firstSigNodes = 20,  useInfo = "all")
+dev.off()
+
+svg(paste0("analisis/enriquecimiento/pc_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, PC@score, firstSigNodes = 10,  useInfo = "all")
+dev.off()
+
+svg(paste0("analisis/enriquecimiento/weight_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, weight@score, firstSigNodes = 10, useInfo = "all")
+dev.off()
+
+svg(paste0("analisis/enriquecimiento/weight01_graph", ".svg"), width = 8, height = 6)
+showSigOfNodes(pre_enriquecimiento, weight01@score, firstSigNodes = 10, useInfo = "all")
+dev.off()
+```
+
+
+Seleccionamos los genes DE anotados en cada término (o todos los genes anotados para GSEA)
+```{r}
+sigGenes <- sigGenes(pre_enriquecimiento)
+
+AnnoList <- lapply(ORA_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+ORA_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[1]] = ORA_t
+
+sigGenes_GSEA <- sigGenes(pre_enriquecimiento_gsea)
+AnnoList <- lapply(GSEA_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes_GSEA))
+GSEA_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[2]] = GSEA_t
+
+AnnoList <- lapply(elim_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+elim_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[3]] = elim_t
+
+AnnoList <- lapply(weight_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+weight_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[4]] = weight_t
+
+
+AnnoList <- lapply(PC_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+PC_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[5]] = PC_t
+
+
+AnnoList <- lapply(weight01_t$"GO.ID", function(x) as.character(unlist(genesInTerm(object = pre_enriquecimiento, whichGO = x))))
+SigList <- lapply(AnnoList, function(x) intersect(x, sigGenes))
+weight01_t$"Genes" <- sapply(SigList, paste, collapse = ",")
+lista_resultados[[6]] = weight01_t
+
+
+```
+
+
+Para GSEA seleccionamos que términos son UP y cuales DOWN viendo la posicion de los genes anotados en la lista ordenada 
+
+```{r}
+posicion = function(termino, genes_interes_gsea){
+  termino_procesado = unlist(str_split(termino, ",", n = Inf, simplify = FALSE))
+  medio = length(genes_interes_gsea)/2
+  sumatorio = 0
+  for (gen in 1:length(termino_procesado)){
+  posicion = match(termino_procesado[gen], names(genes_interes_gsea))
+  if (posicion <= medio){
+    sumatorio = sumatorio + 1
+  } else {
+  sumatorio = sumatorio - 1
+}
+  }
+  return(sumatorio)
+}
+```
+
+
+```{r}
+### Quitamos algun caso NA
+GSEA_t <- GSEA_t %>% mutate_all(na_if,"")
+GSEA_t<-na.omit(GSEA_t)
+
+### Cogemos solo los significativos
+terminos_significativos = GSEA_t
+
+### APLICAMOS LA FUNCION
+x<-unlist(lapply(terminos_significativos$Genes, posicion, genes_interes=genes_interes_gsea))
+names(x) = terminos_significativos$GO.ID
+terminos_significativos$expresion = x
+dataset_resultados = terminos_significativos
+
+for (i in 1:length(dataset_resultados$Genes)){
+  prueba = dataset_resultados$Genes[i]
+  termino_procesado = paste(unlist(str_split(prueba, ",", n = Inf, simplify = FALSE)), collapse = ',')
+  dataset_resultados[i,7] = termino_procesado
+}
+dataset_resultados = dataset_resultados[,c(1,2,3,4,5,7,8,6)]
+
+
+terminos_up = terminos_significativos[terminos_significativos$expresion>0,]
+terminos_down = terminos_significativos[terminos_significativos$expresion<(0),]
+
+if (opcion == "up"){
+  lista_resultados[[2]] = terminos_up
+} else {lista_resultados[[2]] = terminos_down}
+
+```
+
+
+Guardamos los datos
+```{r}
+sig_go_fisher = ORA@score[ORA@score<=pvalor]
+sig_go_gsea = GSEA@score[GSEA@score<=pvalor]
+sig_go_elim = elim@score[elim@score<=pvalor]
+sig_go_weight = weight@score[weight@score<=pvalor]
+sig_go_PA = PC@score[PC@score<=pvalor]
+sig_go_weight01 = weight01@score[weight01@score<=pvalor]
+
+go_term_sig = list(sig_go_fisher, sig_go_gsea, sig_go_elim, sig_go_weight, sig_go_PA,sig_go_weight01)
+save(go_term_sig, file = "analisis/enriquecimiento/terminos_significativos.rda")
+save(lista_resultados, file = "analisis/enriquecimiento/lista_dataframes_resultados.rda")
+
+```
+
+
+

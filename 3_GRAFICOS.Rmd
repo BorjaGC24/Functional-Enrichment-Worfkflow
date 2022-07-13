@@ -1,0 +1,191 @@
+---
+title: "Script final"
+author: "Borja Gómez"
+date: "18/0362022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+Cargamos los paquetes
+```{r}
+pacman::p_load(WebGestaltR,Hmisc, stringr,ggplot2, plotrix, UpSetR)
+```
+
+```{bash}
+mkdir analisis/graficos
+```
+
+### DATOS SIN PROCESAR ###
+```{r}
+
+load(paste("analisis/enriquecimiento/lista_dataframes_resultados.rda", sep = "/"))
+load(paste("analisis/enriquecimiento/terminos_significativos.rda", sep = "/"))
+pvalor = 0.05
+
+#################### HEATMAP ####################
+
+fisher = go_term_sig[[1]]
+gsea = go_term_sig[[2]]
+elim = go_term_sig[[3]]
+weight = go_term_sig[[4]]
+pc = go_term_sig[[5]]
+weight01 = go_term_sig[[6]]
+
+PO<-function(x,y){
+  comun = length(intersect(names(x),names(y)))
+  return((((comun/length(x)+(comun/length(y)))/2)*100))
+}
+
+m_ORA = c(PO(fisher,fisher),PO(fisher,gsea),PO(fisher,elim),PO(fisher,weight),PO(fisher,pc),PO(fisher,weight01))
+m_GSEA = c(PO(gsea,fisher),PO(gsea,gsea),PO(gsea,elim),PO(gsea,weight),PO(gsea,pc),PO(gsea,weight01))
+m_elim = c(PO(elim,fisher),PO(elim,gsea),PO(elim,elim),PO(elim,weight),PO(elim,pc),PO(elim,weight01))
+m_weight = c(PO(weight,fisher),PO(weight,gsea),PO(weight,elim),PO(weight,weight),PO(weight,pc),PO(weight,weight01))
+m_PC = c(PO(pc,fisher),PO(pc,gsea),PO(pc,elim),PO(pc,weight),PO(pc,pc),PO(pc,weight01))
+m_weight01 = c(PO(weight01,fisher),PO(weight01,gsea),PO(weight01,elim),PO(weight01,weight),PO(weight01,pc),PO(weight01,weight01))
+
+
+matriz = rbind(m_ORA, m_GSEA, m_elim, m_weight, m_PC, m_weight01)
+rownames(matriz) = c("ORA", "GSEA", "elim","weight", "PC", "weight01")
+colnames(matriz) = c("ORA", "GSEA", "elim","weight", "PC", "weight01")
+svg(paste("analisis/graficos/heatmap_po.svg", sep = "/"), width = 8, height = 6)
+heatmap(matriz)
+dev.off()
+
+#################### CANTIDAD TERMINOS ####################
+
+x<-unlist(lista_resultados)
+fisher = lista_resultados[[1]][as.numeric(lista_resultados[[1]]$ORA)<=pvalor,]
+gsea<-lista_resultados[[2]][as.numeric(lista_resultados[[2]]$GSEA)<=pvalor,]
+elim<-lista_resultados[[3]][as.numeric(lista_resultados[[3]]$elim)<=pvalor,]
+weight<-lista_resultados[[4]][as.numeric(lista_resultados[[4]]$weight)<=pvalor,]
+pa<-lista_resultados[[5]][as.numeric(lista_resultados[[5]]$PC)<=pvalor,]
+weight01<-lista_resultados[[6]][as.numeric(lista_resultados[[6]]$weight01)<=pvalor,]
+
+patata = list(fisher, gsea, elim, weight, pa, weight01)
+
+terminos = unlist(lapply(patata, function(metodo) as.numeric(dim(metodo))[1]))
+names(terminos) = c("ORA", "GSEA", "elim","weight","PC", "weight01")
+svg(paste("analisis/graficos/numero_terminos.svg", sep = "/"), width = 8, height = 6)
+barplot(terminos, main = "Cantidad de términos para cada método", ylab = "Número de términos", col = c("#99d9ea", "#99d9ea", "#b5e61d","#b5e61d","#b5e61d","#b5e61d"),cex.names=1.5, cex.axis = 1.5)
+dev.off()
+
+#################### TAMAÑO TERMINOS ####################
+
+medias <- data.frame(
+  name=c("ORA", "GSEA", "ELIM", "WEIGHT", "PC", "WEIGHT01"),
+  value=c(mean(fisher$Annotated), mean(na.omit(gsea$Annotated)), mean(elim$Annotated), mean(weight$Annotated), mean(pa$Annotated), mean(weight01$Annotated)),
+  se=c(std.error(fisher$Annotated), std.error(gsea$Annotated), std.error(elim$Annotated), std.error(weight$Annotated), std.error(pa$Annotated), std.error(weight01$Annotated))
+)
+medias$name = factor(medias$name, levels = medias$name)
+
+a<-ggplot(medias) +
+    geom_bar( aes(x=name, y=value), stat="identity", fill=c("#99d9ea", "#99d9ea", "#b5e61d","#b5e61d","#b5e61d","#b5e61d"), alpha=1) +
+    geom_errorbar( aes(x=name, ymin=value-se, ymax=value+se), width=0.2, colour="black", alpha=1, size=0.8) +
+    labs(y= "Genes en cada término", x = "") + 
+    theme(axis.text=element_text(size=18),axis.title=element_text(size=18,face="bold"))
+
+ggsave(file=paste("analisis/graficos/tamaño_terminos.svg", sep = "/"), plot=a, width=10, height=8)
+
+
+#################### GRAFICOS UPSET ####################
+
+listInput<-list(elim = elim$GO.ID, weight = weight$GO.ID,  weight01 = weight01$GO.ID, PC = pa$GO.ID)
+svg(paste("analisis/graficos/comparacion_control.svg", sep = "/"), width = 8, height = 6)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq")
+dev.off()
+
+listInput<-list(fisher = fisher$GO.ID, gsea = gsea$GO.ID)
+svg(paste("analisis/graficos/comparacion_clásicos.svg", sep = "/"), width = 8, height = 6)
+upset(fromList(listInput), mainbar.y.label = "Shared terms", sets.x.label = "Terms detected",  order.by = "freq")#, group.by = "sets")
+dev.off()
+
+listInput<-list(ORA = fisher$GO.ID,ELIM = elim$GO.ID, WEIGHT = weight$GO.ID, GSEA = gsea$GO.ID, PC = pa$GO.ID, WEIGHT01 = weight01$GO.ID)
+svg(paste("analisis/graficos/comparacion_todos.svg", sep = "/"), width = 8, height = 6)
+upset(fromList(listInput), 
+      mainbar.y.label = "Términos compartidos", 
+      sets.x.label = "Términos detectados",  
+      order.by = "freq",
+      matrix.color = "blue",
+      shade.color = c("green"), 
+      nset = 6,
+      point.size = 1.5,
+      scale.intersections = "identity",
+      nintersects = 26
+     )
+
+dev.off()
+
+#################### ENRIQUECIMIENTO ####################
+
+fisher$enrichment = fisher$Significant/fisher$Expected
+fisher = fisher[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "enrichment", "ORA")]
+lista_resultados[[1]] = fisher
+
+gsea$enrichment = gsea$Significant/gsea$Annotated
+gsea = gsea[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes","expresion", "enrichment", "GSEA")]
+lista_resultados[[2]] = gsea
+
+### OJO GSEA ES DISTINTO, YO TENGO X GENES EN UN TÉRMINO, DE TODOS LOS GENES (GSEA USA TODOS), CUANTOS SON DE?
+### Sin embargo, no es un ratio, siempre va a ser 1 o igual a 1, por lo que no se puede comparar con el resto
+
+pa$enrichment = pa$Significant/pa$Expected
+pa = pa[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "enrichment", "PC")]
+lista_resultados[[5]] = pa
+
+elim$enrichment = elim$Significant/elim$Expected
+elim = elim[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "enrichment", "elim")]
+lista_resultados[[3]] = elim
+
+weight$enrichment = weight$Significant/weight$Expected
+weight = weight[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "enrichment", "weight")]
+lista_resultados[[4]] = weight
+
+weight01$enrichment = weight01$Significant/weight01$Expected
+weight01 = weight01[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "enrichment", "weight01")]
+lista_resultados[[6]] = weight01
+
+
+save(lista_resultados, file = paste("analisis/enriquecimiento/lista_dataframes_resultados.rda", sep = "/"))
+
+
+#################### PLOT ENRIQUECIMIENTO ####################
+
+library("plotrix")
+
+datos <- data.frame(
+  name=c("ORA", "GSEA", "ELIM", "WEIGHT", "PC", "WEIGHT01"),
+  enriquecimiento<-c(mean(fisher$enrichment),
+                                mean(gsea$enrichment),
+                                mean(elim$enrichment),
+                                mean(weight$enrichment),
+                                mean(pa$enrichment),
+                                mean(weight01$enrichment)),
+  standar_error =c(std.error(fisher$enrichment), std.error(gsea$enrichment), std.error(elim$enrichment), std.error(weight$enrichment), std.error(pa$enrichment), std.error(weight01$enrichment))
+)
+datos$name = factor(datos$name, levels = datos$name)
+
+a<-ggplot(datos) +
+    geom_bar( aes(x=name, y=enriquecimiento), stat="identity",fill=c("#99d9ea", "#99d9ea", "#b5e61d","#b5e61d","#b5e61d","#b5e61d"), alpha=1) +
+    geom_errorbar( aes(x=name, ymin=enriquecimiento-standar_error, ymax=enriquecimiento+standar_error), width=0.2, colour="black", alpha=1, size=0.8) +
+    labs(y= "Ratio de enriquecimiento", x = "") + 
+    theme(axis.text=element_text(size=18),axis.title=element_text(size=18,face="bold"))
+
+ggsave(file = paste("analisis/graficos/enriquecimiento_metodos.svg", sep = "/"), plot=a, width=10, height=8)
+
+```

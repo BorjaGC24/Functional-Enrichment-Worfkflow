@@ -1,0 +1,1742 @@
+---
+title: "ASTROCITOS UP"
+author: "Borja Gómez"
+date: "1/12/2022"
+output:
+
+  html_document:
+    df_print: paged
+    number_sections: yes
+    highlight: kate
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(broom)
+library(kableExtra)
+```
+
+```{r echo=FALSE}
+pvalor = 0.05
+```
+
+# Introducción
+
+# Análisis de los métodos de enriquecimiento funcional
+
+```{r echo=FALSE}
+load("analisis/enriquecimiento/lista_dataframes_resultados.rda")
+lista_resultados = lista_resultados[-7]
+terminos = unlist(lapply(lista_resultados, function(metodo) as.numeric(dim(metodo))[1]))
+big_term<-unlist(lapply(lista_resultados, function(metodo) as.numeric(table(metodo$Annotated>1000))[2]))
+porcentaje =as.numeric((big_term/terminos)*100)
+presentacion = data.frame("Términos" = terminos, "Term Grandes" = big_term, "%" = porcentaje)
+row.names(presentacion) = c("ORA", "GSEA","elim", "weight", "PC","weight01")
+presentacion[is.na(presentacion)] <- 0
+
+presentacion %>% 
+kbl(col.names = c("Términos totales", "Términos grandes", "%"),digits = 2,align=rep('c', 3), ) %>%
+  kable_paper("hover", full_width = F)
+```
+
+![](analisis/graficos/numero_terminos.svg)
+
+## Resultados para ORA 
+
+
+![](analisis/enriquecimiento/ora_graph.svg)
+
+<font size="1"> Grafo para los 20 términos más significativos de ORA. **Abrir en nueva pestaña para ver en detalle.**</font>
+
+
+## Resultados para GSEA 
+
+![](analisis/enriquecimiento/gsea_graph.svg)
+
+<font size="1"> Grafo de los 20 términos más significativos para GSEA a mayor color mayor significancia. Los nodos rectangulares representan uno de los 20 términos. **Abrir en nueva pestaña para ver en detalle.**</font>
+
+
+## Resultados para elim 
+
+![](analisis/enriquecimiento/elim_graph.svg)
+
+<font size="1">Grafo de los 10 términos más significativos para elim. A mayor color mayor significancia. Los nodos rectangulares representan uno de los 10 términos. </font>
+
+## Resultados para weight 
+
+![](analisis/enriquecimiento/weight_graph.svg)
+
+<font size="1">Grafo de los 10 términos más significativos para weight.
+A mayor color mayor significancia. Los nodos rectangulares representan
+uno de los 10 términos. **Abrir en nueva pestaña para ver en
+detalle.**</font>
+
+
+## Resultados para PC 
+
+![](analisis/enriquecimiento/pc_graph.svg)
+
+<font size="1">Grafo de los 20 términos más significativos para PC A
+mayor color mayor significancia. Los nodos rectangulares representan uno
+de los 20 términos. **Abrir en nueva pestaña para ver en
+detalle.**</font>
+
+
+## Resultados para weight01 
+
+![](analisis/enriquecimiento/weight01_graph.svg)
+
+<font size="1">Grafo de los 10 términos más significativos para
+weight01. A mayor color mayor significancia. Los nodos rectangulares
+representan uno de los 10 términos. **Abrir en nueva pestaña para ver en
+detalle.**</font>
+
+
+## Comparativas generales
+
+### Calidad de los términos y WSC
+
+![](analisis/graficos/tamaño_terminos.svg)
+
+<font size="1">Tamaño medio para los términos significativos detectados
+por cada uno de los métodos </font>
+
+![](analisis/graficos/KDE.svg)
+<font size="1">Distribución del IC detectado por cada método </font>
+
+
+![](analisis/graficos/enriquecimiento_metodos.svg)
+
+
+```{r, echo=FALSE, message = FALSE}
+pacman::p_load(GOSemSim,GO.db)
+organismo = "org.Hs.eg.db"
+GO_semsim = godata(organismo, ont="BP")
+
+
+load("analisis/enriquecimiento/lista_dataframes_resultados.rda")
+terminos_normal = unlist(lapply(lista_resultados[-7], function(metodo) as.numeric(dim(metodo))[1]))
+load("analisis/procesados/wsc/lista_dataframes_resultados.rda")
+
+pvalor = 0.05
+
+terminos_wsc = unlist(lapply(nueva_lista, function(metodo) as.numeric(dim(metodo))[1]))
+porcentaje_eiminados = ((terminos_normal-terminos_wsc)/terminos_normal)*100
+
+fisher = lista_resultados[[1]][as.numeric(lista_resultados[[1]]$ORA)<=pvalor,]
+gsea<-lista_resultados[[2]][as.numeric(lista_resultados[[2]]$GSEA)<=pvalor,]
+elim<-lista_resultados[[3]][as.numeric(lista_resultados[[3]]$elim)<=pvalor,]
+weight<-lista_resultados[[4]][as.numeric(lista_resultados[[4]]$weight)<=pvalor,]
+pa<-lista_resultados[[5]][as.numeric(lista_resultados[[5]]$PC)<=pvalor,]
+weight01<-lista_resultados[[6]][as.numeric(lista_resultados[[6]]$weight01)<=pvalor,]
+
+ratio_IC <-as.vector(c(mean(GO_semsim@IC[fisher$GO.ID]),
+                                mean(na.omit(GO_semsim@IC[na.omit(gsea$GO.ID)])),
+                                mean(GO_semsim@IC[elim$GO.ID]),
+                                mean(GO_semsim@IC[weight$GO.ID]),
+                                mean(na.omit(GO_semsim@IC[pa$GO.ID])),
+                                mean(GO_semsim@IC[weight01$GO.ID])))
+
+ratio_normal <-as.vector(c(mean(fisher$enrichment),
+                                mean(gsea$enrichment),
+                                mean(elim$enrichment),
+                                mean(weight$enrichment),
+                                mean(pa$enrichment),
+                                mean(weight01$enrichment)))
+
+
+
+fisher = nueva_lista[[1]][as.numeric(nueva_lista[[1]]$ORA)<=pvalor,]
+gsea<-nueva_lista[[2]][as.numeric(nueva_lista[[2]]$GSEA)<=pvalor,]
+elim<-nueva_lista[[3]][as.numeric(nueva_lista[[3]]$elim)<=pvalor,]
+weight<-nueva_lista[[4]][as.numeric(nueva_lista[[4]]$weight)<=pvalor,]
+pa<-nueva_lista[[5]][as.numeric(nueva_lista[[5]]$PC)<=pvalor,]
+weight01<-nueva_lista[[6]][as.numeric(nueva_lista[[6]]$weight01)<=pvalor,]
+
+
+fisher$enrichment = fisher$Significant/fisher$Expected
+fisher = fisher[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[1]] = fisher
+
+gsea$enrichment = gsea$Significant/gsea$Annotated
+gsea = gsea[,c(1,2,3,4,5,9,8,6,7)]
+nueva_lista[[2]] = gsea
+
+pa$enrichment = pa$Significant/pa$Expected
+pa = pa[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[5]] = pa
+
+elim$enrichment = elim$Significant/elim$Expected
+elim = elim[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[3]] = elim
+
+weight$enrichment = weight$Significant/weight$Expected
+weight = weight[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[4]] = weight
+
+weight01$enrichment = weight01$Significant/weight01$Expected
+weight01 = weight01[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[6]] = weight01
+
+
+ratio_wsc <-as.vector(c(mean(fisher$enrichment),
+                                mean(gsea$enrichment),
+                                mean(elim$enrichment),
+                                mean(weight$enrichment),
+                                mean(pa$enrichment),
+                                mean(weight01$enrichment)))
+
+
+ratio_IC_wsc <-as.vector(c(mean(GO_semsim@IC[fisher$GO.ID]),
+                                mean(na.omit(GO_semsim@IC[na.omit(gsea$GO.ID)])),
+                                mean(GO_semsim@IC[elim$GO.ID]),
+                                mean(GO_semsim@IC[weight$GO.ID]),
+                                 mean(na.omit(GO_semsim@IC[pa$GO.ID])),
+                                mean(GO_semsim@IC[weight01$GO.ID])))
+
+load("analisis/procesados/filtrado/filtrado_lista_dataframes_resultados.rda")
+terminos_filtrados = unlist(lapply(lista_filtrado, function(metodo) as.numeric(dim(metodo))[1]))
+
+fisher = lista_filtrado[[1]][as.numeric(lista_filtrado[[1]]$ORA)<=pvalor,]
+gsea<-lista_filtrado[[2]][as.numeric(lista_filtrado[[2]]$GSEA)<=pvalor,]
+elim<-lista_filtrado[[3]][as.numeric(lista_filtrado[[3]]$elim)<=pvalor,]
+weight<-lista_filtrado[[4]][as.numeric(lista_filtrado[[4]]$weight)<=pvalor,]
+pa<-lista_filtrado[[5]][as.numeric(lista_filtrado[[5]]$PC)<=pvalor,]
+weight01<-lista_filtrado[[6]][as.numeric(lista_filtrado[[6]]$weight01)<=pvalor,]
+
+fisher$enrichment = fisher$Significant/fisher$Expected
+fisher = fisher[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[1]] = fisher
+
+gsea$enrichment = gsea$Significant/gsea$Annotated
+gsea = gsea[,c(1,2,3,4,5,9,8,6,7)]
+nueva_lista[[2]] = gsea
+
+pa$enrichment = pa$Significant/pa$Expected
+pa = pa[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[5]] = pa
+
+elim$enrichment = elim$Significant/elim$Expected
+elim = elim[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[3]] = elim
+
+weight$enrichment = weight$Significant/weight$Expected
+weight = weight[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[4]] = weight
+
+weight01$enrichment = weight01$Significant/weight01$Expected
+weight01 = weight01[,c(1,2,3,4,5,8,6,7)]
+nueva_lista[[6]] = weight01
+
+
+
+ratio_filtrado <-as.vector(c(mean(fisher$enrichment),
+                                mean(gsea$enrichment),
+                                mean(elim$enrichment),
+                                mean(weight$enrichment),
+                                mean(pa$enrichment),
+                                mean(weight01$enrichment)))
+
+ratio_IC_filtrado <-as.vector(c(mean(GO_semsim@IC[fisher$GO.ID]),
+                                mean(na.omit(GO_semsim@IC[na.omit(gsea$GO.ID)])),
+                                mean(GO_semsim@IC[elim$GO.ID]),
+                                mean(GO_semsim@IC[weight$GO.ID]),
+                                  mean(na.omit(GO_semsim@IC[pa$GO.ID])),
+                                mean(GO_semsim@IC[weight01$GO.ID])))
+
+combinacion = data.frame("Term originales" = terminos_normal,
+                         "Enriquecimiento ori" = ratio_normal,
+                         "IC medio" = ratio_IC,
+                         "Term procesado" = terminos_wsc,
+                         "Enriquecimiento wsc" = ratio_wsc,
+                          "IC medio" = ratio_IC_wsc,
+                         "Term filtrado" = terminos_filtrados,
+                         "Enriquecimiento filtrado" = ratio_filtrado,
+                          "IC medio" = ratio_IC_filtrado)
+
+rownames(combinacion) = c("Fisher", "GSEA", "elim", "weight", "PC", "weight01")
+
+combinacion[is.na(combinacion)] <- 0
+
+x <- combinacion %>% 
+kbl(col.names = c("Nº Términos","Enriquecimiento", "IC medio","Nº Términos", "Enriquecimiento","IC medio","Nº Términos", "Enriquecimiento","IC medio"),digits = 2,align=rep('c', 3), ) %>%
+  kable_paper("hover", full_width = F)
+
+add_header_above(x, c("","Estandar" = 3, "WSC" = 3, "WSC + Filtrado" = 3))
+
+load("analisis/enriquecimiento/lista_dataframes_resultados.rda")
+
+```
+
+En la tabla superior vemos que si usamos WSC de forma aislada conseguimos descartar algunos términos para todos los métodos; principalmente GSEA que presenta una clara mejoría; sin embargo, su efecto no es muy destacable y en algunos casos incluso empeora el enriquecimiento medio. Al combinar WSC con un filtrado de los términos generales obtenemos unos mejores resultados en todos los casos, con un claro incremento de enriquecimiento en los métodos tradicionales y una sutil mejora en los métodos de control.
+
+
+### Medida PO
+
+Utilizando el porcentaje de solapamiento (PO):
+
+$$
+(PO) = \bigg(\frac{\frac{k}{L_1}+\frac{k}{L_2}}{2}\bigg)*100
+$$
+
+Siendo *`k`* el número de términos compartidos por ambos métodos a
+comparar, *`L1`* el número de términos del primer métodos y *`L2`* los
+del segundo. Con ello podemos conocer cuantos términos comparten entre
+sí los distintos métodos.
+
+![](analisis/graficos/heatmap_po.svg)
+<font size="1">Heatmap de las medidas PO para los 6 métodos de
+enriquecimiento funcional</font>
+
+### Solapamiento de términos
+
+![Relación entre los términos de ORA, GSEA y PC](analisis/graficos/comparacion_clásicos.svg)
+
+![Relación entre los términos de elim, weight y weight01](analisis/graficos/comparacion_control.svg)
+
+![Relación entre los 6 métodos de enriquecimiento](analisis/graficos/comparacion_todos.svg)
+
+# Clusterizado de los resultados
+
+## Resultados de ORA
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/1_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/1_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/1_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/1_REVIGO.svg){width="49%"}
+
+```{r echo=FALSE}
+library(rmarkdown)
+library(DT)
+
+load("analisis/procesados/filtrado/clust_fisher.rda")
+clust_fisher_wsc = clust_fisher
+load("analisis/procesados/filtrado/clust_gsea.rda")
+clust_gsea_wsc = clust_gsea
+load("analisis/procesados/filtrado/clust_elim.rda")
+clust_elim_wsc = clust_elim
+load("analisis/procesados/filtrado/clust_weight.rda")
+clust_weight_wsc = clust_weight
+load("analisis/procesados/filtrado/clust_pa.rda")
+clust_pa_wsc = clust_pa
+load("analisis/procesados/filtrado/clust_weight01.rda")
+clust_weight01_wsc = clust_weight01
+
+load("analisis/procesados/estandar/clust_fisher.rda") # HABRÁ QUE AÑADIR .RDA
+load("analisis/procesados/estandar/clust_gsea.rda")
+load("analisis/procesados/estandar/clust_elim.rda")
+load("analisis/procesados/estandar/clust_weight.rda")
+load("analisis/procesados/estandar/clust_pa.rda")
+load("analisis/procesados/estandar/clust_weight01.rda")
+```
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_fisher
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters = mean(as.numeric(datos[5,]))
+media_tamaños = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_fisher_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc = mean(as.numeric(datos[5,]))
+media_tamaños_wsc = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+### Resultados {.tabset .tabset-pills}
+
+#### SE
+
+<font size="1">Clusterizado mediante simplifyEnrichment para ORA</font>
+
+```{r echo=FALSE}
+x<-clust_fisher$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+    formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC<1,]$cluster,"#ffc0cb")) %>%
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para ORA</font>
+
+```{r echo=FALSE}
+x<-clust_fisher$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+    formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC<1,]$cluster,"#ffc0cb")) %>%
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_fisher_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_fisher_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+## Resutados GSEA
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/2_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/2_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/2_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/2_REVIGO.svg){width="49%"}
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_gsea
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters[[2]] = mean(as.numeric(datos[5,]))
+media_tamaños[[2]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para GSEA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_gsea_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc[[2]] = mean(as.numeric(datos[5,]))
+media_tamaños_wsc[[2]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+### Resultados {.tabset .tabset-pills}
+
+#### SE
+
+<font size="1">Clusterizado mediante simplifyEnrichment para GSEA</font>
+
+```{r echo=FALSE}
+x<-clust_gsea$clusterización_se
+x <-x[order(-x$cluster_size),]
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para GSEA</font>
+
+```{r echo=FALSE}
+x<-clust_gsea$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_gsea_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_gsea_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+## Resultados elim
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/3_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/3_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/3_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/3_REVIGO.svg){width="49%"}
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_elim
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters[[3]] = mean(as.numeric(datos[5,]))
+media_tamaños[[3]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para elim") %>%
+  kable_paper("hover", full_width = F)
+```
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_elim_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc[[3]] = mean(as.numeric(datos[5,]))
+media_tamaños_wsc[[3]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+
+### Resultados {.tabset .tabset-pills}
+
+#### SE
+
+<font size="1">Clusterizado mediante simplifyEnrichment para elim</font>
+
+```{r echo=FALSE}
+x<-clust_elim$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para elim</font>
+
+```{r echo=FALSE}
+x<-clust_elim$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_elim_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_elim_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+## Resultados weight 
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/4_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/4_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/4_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/4_REVIGO.svg){width="49%"}
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_weight
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters[[4]] = mean(as.numeric(datos[5,]))
+media_tamaños[[4]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para weight") %>%
+  kable_paper("hover", full_width = F)
+```
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_weight_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc[[4]] = mean(as.numeric(datos[5,]))
+media_tamaños_wsc[[4]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+### Resultados {.tabset .tabset-pills}
+
+#### SE
+
+<font size="1">Clusterizado mediante simplifyEnrichment para
+weight</font>
+
+```{r echo=FALSE}
+x<-clust_weight$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para weight</font>
+
+```{r echo=FALSE}
+x<-clust_weight$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_weight_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_weight_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+
+## Resultados PC 
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/5_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/5_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/5_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/5_REVIGO.svg){width="49%"}
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_pa
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters[[5]] = mean(as.numeric(datos[5,]))
+media_tamaños[[5]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para weight") %>%
+  kable_paper("hover", full_width = F)
+```
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_pa_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc[[5]] = mean(as.numeric(datos[5,]))
+media_tamaños_wsc[[5]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+### Resultados {.tabset .tabset-pills}
+
+#### SE
+
+<font size="1">Clusterizado mediante simplifyEnrichment para
+weight</font>
+
+```{r echo=FALSE}
+x<-clust_pa$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para weight</font>
+
+```{r echo=FALSE}
+x<-clust_pa$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_pa_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_pa_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+
+
+
+## Resultados weight01 
+
+### Heatmaps {.tabset .tabset-pills}
+
+#### Heatmaps estandar
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/6_SimplifyEnrichment.svg){width="49%"}
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/estandar/6_REVIGO.svg){width="49%"}
+
+#### Heatmaps WSC
+
+![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/6_SimplifyEnrichment.svg){width="49%"} ![Relación entre los 50 términos más significativos para los 6 métodos de enriquecimiento](analisis/procesados/filtrado/6_REVIGO.svg){width="49%"}
+
+### Tablas {.tabset .tabset-pills}
+
+#### Tabla estandar
+
+```{r echo=FALSE}
+cluster = clust_weight01
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters[[6]] = mean(as.numeric(datos[5,]))
+media_tamaños[[6]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para weight01") %>%
+  kable_paper("hover", full_width = F)
+```
+
+#### Tabla WSC
+
+```{r echo=FALSE}
+cluster = clust_weight01_wsc
+
+x<-cluster$clusterización_se
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_s = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_s) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_s) = "Número de términos"
+
+x<-cluster$clusterizacion_revigo
+
+num_cluster = as.integer(c(sum(x$cluster_size > 20), sum(x$cluster_size > 5 & x$cluster_size <= 20), sum(x$cluster_size<=5), mean(x$cluster_size)))
+num_cluster[5] = (num_cluster[[1]] + num_cluster[[2]] + num_cluster[[3]])
+
+respuesta_cluster_r = data.frame("Número cluster" = num_cluster )
+rownames(respuesta_cluster_r) = c("> 20 términos", "5-20 términos", "< 5 términos", "Tamaño medio", "Total")
+colnames(respuesta_cluster_r) = "Número de términos"
+
+datos = cbind(respuesta_cluster_s,respuesta_cluster_r)
+colnames(datos) = c("simplifyEnrichment", "REVIGO")
+rownames(datos) = c("> 20 términos", "5-20 términos", "< 5 términos","Tamaño medio", "Total" )
+
+media_clusters_wsc[[6]] = mean(as.numeric(datos[5,]))
+media_tamaños_wsc[[6]] = mean(as.numeric(datos[4,]))
+
+datos %>% 
+kbl(align = "c", caption = "Resultados del clusterizado para ORA") %>%
+  kable_paper("hover", full_width = F)
+```
+
+
+
+### Resultados {.tabset .tabset-pills}
+
+<font size="1">Clusterizado mediante simplifyEnrichment para
+weight01</font>
+
+#### SE
+
+```{r echo=FALSE}
+x<-clust_weight01$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO
+
+<font size="1">Clusterizado mediante REVIGO para weight01</font>
+
+```{r echo=FALSE}
+x<-clust_weight01$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### SE - WSC
+
+```{r echo=FALSE}
+x<-clust_weight01_wsc$clusterización_se
+x <-x[order(-x$cluster_size),]
+
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+#### REVIGO - WSC
+
+```{r echo=FALSE}
+x<-clust_weight01_wsc$clusterizacion_revigo
+x <-x[order(-x$cluster_size),]
+
+x$go_id = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$go_id,"'>",x$go_id ,"</a>")
+x$ancestral = paste0("<a href='https://www.ebi.ac.uk/QuickGO/term/", x$ancestral,"'>",x$ancestral ,"</a>")
+
+datatable(x,rownames= FALSE,escape = FALSE) %>%
+  formatRound(columns=c('IC', 'importance'), digits=2) %>% 
+   formatStyle('cluster', target = 'row', 
+              backgroundColor = styleEqual(x[x$IC>mean(x$IC),]$cluster, "#90ee90"))
+```
+
+# Conclusiones 
+
+## Número de clusters {.tabset .tabset-pills}
+
+### Clusterizado estandar
+
+```{r echo=FALSE}
+# Grouped Bar Plot
+
+counts <- rbind(length(unique(clust_fisher$simplifyenrichment$cluster)), length(unique(clust_fisher$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("ORA","ORA"))
+resultados = cbind(counts,c("SE","REVIGO"))
+
+counts <- rbind(length(unique(clust_gsea$simplifyenrichment$cluster)), length(unique(clust_gsea$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("GSEA","GSEA"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_elim$simplifyenrichment$cluster)), length(unique(clust_elim$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("elim","elim"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_weight$simplifyenrichment$cluster)), length(unique(clust_weight$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("weight","weight"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_pa$simplifyenrichment$cluster)), length(unique(clust_pa$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("PC","PC"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_weight01$simplifyenrichment$cluster)), length(unique(clust_weight01$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("weight01","weight01"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+resultados = as.data.frame(resultados)
+colnames(resultados)=c("N_clusters", "Método", "Clusterizado")
+resultados$N_clusters = as.numeric(resultados$N_clusters)
+
+
+
+level_order <- c('ORA', 'GSEA', 'elim', "weight", "PC", "weight01") #this vector might be useful for other plots/analyses
+
+library(ggplot2)
+a<-ggplot(resultados, aes(fill=Clusterizado, y=N_clusters, x=factor(Método, level = level_order))) + 
+    geom_bar(position="dodge", stat="identity") +
+    labs(x = "", y = "Nº de clusters") + 
+    theme(axis.text=element_text(size=14),axis.title=element_text(size=14,face="bold"))
+
+
+a
+
+ggsave(file=paste0("analisis/procesados/estandar/num_clusters.svg"), plot=a, width=10, height=8)
+```
+
+### Clusterizado con WSC
+
+```{r echo=FALSE}
+# Grouped Bar Plot
+
+counts <- rbind(length(unique(clust_fisher_wsc$simplifyenrichment$cluster)), length(unique(clust_fisher_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("ORA","ORA"))
+resultados = cbind(counts,c("SE","REVIGO"))
+
+counts <- rbind(length(unique(clust_gsea_wsc$simplifyenrichment$cluster)), length(unique(clust_gsea_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("GSEA","GSEA"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_elim_wsc$simplifyenrichment$cluster)), length(unique(clust_elim_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("elim","elim"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_weight_wsc$simplifyenrichment$cluster)), length(unique(clust_weight_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("weight","weight"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_pa_wsc$simplifyenrichment$cluster)), length(unique(clust_pa_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("PC","PC"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+counts <- rbind(length(unique(clust_weight01_wsc$simplifyenrichment$cluster)), length(unique(clust_weight01_wsc$clusterizacion_revigo$cluster)))
+counts = cbind(counts,c("weight01","weight01"))
+counts = cbind(counts,c("SE","REVIGO"))
+resultados = rbind(resultados, counts)
+
+resultados = as.data.frame(resultados)
+colnames(resultados)=c("N_clusters", "Método", "Clusterizado")
+resultados$N_clusters = as.numeric(resultados$N_clusters)
+
+
+
+level_order <- c('ORA', 'GSEA', 'elim', "weight", "PC", "weight01") #this vector might be useful for other plots/analyses
+
+
+a<-ggplot(resultados, aes(fill=Clusterizado, y=N_clusters, x=factor(Método, level = level_order))) + 
+    geom_bar(position="dodge", stat="identity") +
+    labs(x = "", y = "Nº de clusters") + 
+    theme(axis.text=element_text(size=14),axis.title=element_text(size=14,face="bold"))
+
+a
+
+ggsave(file=paste0("analisis/procesados/filtrado/num_clusters.svg"), plot=a, width=10, height=8)
+```
+
+
+## Distribución de clusters {.tabset .tabset-pills}
+
+### Clusterizado estandar
+
+```{r echo=FALSE}
+cluster = clust_fisher
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("ORA", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("ORA", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+resultado = rbind(a,b)
+
+colnames(resultado) = c("frecuencia", "test", "clusterizado")
+
+########################################3
+cluster = clust_elim
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("elim", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("elim", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_weight
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("weight", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("weight", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_pa
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("PC", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("PC", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_weight01
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("weight01", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("weight01", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_gsea
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("GSEA", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("GSEA", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+library(ggplot2)
+
+level_order <- c('ORA', 'GSEA', 'elim', "weight", "PC", "weight01")
+
+a<-ggplot(resultado, aes(x=factor(test, level = level_order), y=frecuencia, fill=clusterizado)) +
+  geom_boxplot(varwidth = TRUE, alpha=1) +
+   facet_wrap(~test, scale = "free") +
+    labs(x = "", y = "Size of clusters")+ 
+    theme(axis.text=element_text(size=14),axis.title=element_text(size=14,face="bold"))
+
+
+a
+
+ggsave(file=paste0("analisis/procesados/estandar/resultados_clusterización.svg"), plot=a, width=10, height=8)
+```
+
+### Clusterizado con WSC
+
+```{r echo=FALSE}
+cluster = clust_fisher_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("ORA", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("ORA", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+resultado = rbind(a,b)
+
+colnames(resultado) = c("frecuencia", "test", "clusterizado")
+
+########################################3
+cluster = clust_elim_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("elim", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("elim", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_weight_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("weight", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("weight", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_pa_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("PC", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("PC", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_weight01_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("weight01", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("weight01", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+########################################3
+cluster = clust_gsea_wsc
+
+x<-cluster$simplifyenrichment
+
+a<-data.frame(table(x$cluster),rep("GSEA", length(table(x$cluster))), rep("SE", length(table(x$cluster))))
+a = a[,-1]
+
+x<-cluster$clusterizacion_revigo
+
+b<- data.frame((x$cluster_size),rep("GSEA", length((x$cluster_size))), rep("REVIGO", length((x$cluster_size))))
+colnames(b) = colnames(a)
+combinacion = rbind(a,b)
+
+colnames(combinacion) = colnames(resultado)
+
+resultado = rbind(resultado, combinacion)
+
+library(ggplot2)
+
+level_order <- c('ORA', 'GSEA', 'elim', "weight", "PC", "weight01")
+
+a<-ggplot(resultado, aes(x=factor(test, level = level_order), y=frecuencia, fill=clusterizado)) +
+  geom_boxplot(varwidth = TRUE, alpha=1) +
+   facet_wrap(~test, scale = "free") +
+    labs(x = "", y = "Size of clusters") + 
+    theme(axis.text=element_text(size=14),axis.title=element_text(size=14,face="bold"))
+
+
+a
+
+ggsave(file=paste0("analisis/procesados/filtrado/resultados_clusterización.svg"), plot=a, width=10, height=8)
+```
+
+
+## Tabla comparativa {.tabset .tabset-pills}
+
+### Tabla estandar
+
+
+```{r echo=FALSE}
+load("analisis/enriquecimiento/lista_dataframes_resultados.rda")
+lista_resultados = lista_resultados[-7]
+terminos = unlist(lapply(lista_resultados, function(metodo) as.numeric(dim(metodo))[1]))
+
+#ORA
+a_se<-(mean(clust_fisher$clusterización_se$IC))
+a_re = mean(clust_fisher$clusterizacion_revigo$IC)
+#GSEA
+b_se<-(mean(clust_gsea$clusterización_se$IC))
+b_re = mean(clust_gsea$clusterizacion_revigo$IC)
+#elim
+c_se<-(mean(clust_elim$clusterización_se$IC))
+c_re=mean(clust_elim$clusterizacion_revigo$IC)
+#weight
+d_se<-(mean(clust_weight$clusterización_se$IC))
+d_re=mean(clust_weight$clusterizacion_revigo$IC)
+#pc
+e_se<-(mean(clust_pa$clusterización_se$IC))
+e_re = mean(clust_pa$clusterizacion_revigo$IC)
+#weight01
+f_se<-(mean(clust_weight01$clusterización_se$IC))
+f_re=mean(clust_weight01$clusterizacion_revigo$IC)
+
+media_clusters_a = media_clusters
+
+patata = data.frame("IC SE" = c(a_se,b_se,c_se,d_se,e_se,f_se), "IC RE" = c(a_re,b_re,c_re,d_re,e_re,f_re), "Media de clusters generados" = media_clusters_a, "Tamaño medio del cluster" = media_tamaños, "Total clusters" = terminos)
+rownames(patata) = c("ORA", "GSEA", "elim", "weight","PC", "weight01")
+
+patata %>% 
+kbl(col.names = c("IC SE ","IC RE", "Media de clusters", "Media de tamaño", "Total términos")) %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+### Tabla WSC
+
+```{r echo=FALSE}
+load("analisis/procesados/filtrado/filtrado_lista_dataframes_resultados.rda")
+lista_resultados = lista_filtrado[-7]
+terminos = unlist(lapply(lista_resultados, function(metodo) as.numeric(dim(metodo))[1]))
+
+#ORA
+#a<-(mean(clust_fisher_wsc$clusterización_se$IC) + mean(clust_fisher_wsc$clusterizacion_revigo$IC))/2
+#GSEA
+#b<-(mean(clust_gsea_wsc$clusterización_se$IC) + mean(clust_gsea_wsc$clusterizacion_revigo$IC))/2
+#elim
+#c<-(mean(clust_elim_wsc$clusterización_se$IC) + mean(clust_elim_wsc$clusterizacion_revigo$IC))/2
+#weight
+#d<-(mean(clust_weight_wsc$clusterización_se$IC) + mean(clust_weight_wsc$clusterizacion_revigo$IC))/2
+#pc
+#e<-(mean(clust_pa_wsc$clusterización_se$IC) + mean(clust_pa_wsc$clusterizacion_revigo$IC))/2
+#weight01
+#f<-(mean(clust_weight01_wsc$clusterización_se$IC) + mean(clust_weight01_wsc$clusterizacion_revigo$IC))/2
+
+
+#ORA
+a_se<-(mean(clust_fisher_wsc$clusterización_se$IC))
+a_re = mean(clust_fisher_wsc$clusterizacion_revigo$IC)
+#GSEA
+b_se<-(mean(clust_gsea_wsc$clusterización_se$IC))
+b_re = mean(clust_gsea_wsc$clusterizacion_revigo$IC)
+#elim
+c_se<-(mean(clust_elim_wsc$clusterización_se$IC))
+c_re=mean(clust_elim_wsc$clusterizacion_revigo$IC)
+#weight
+d_se<-(mean(clust_weight_wsc$clusterización_se$IC))
+d_re=mean(clust_weight_wsc$clusterizacion_revigo$IC)
+#pc
+e_se<-(mean(clust_pa_wsc$clusterización_se$IC))
+e_re = mean(clust_pa_wsc$clusterizacion_revigo$IC)
+#weight01
+f_se<-(mean(clust_weight01_wsc$clusterización_se$IC))
+f_re=mean(clust_weight01_wsc$clusterizacion_revigo$IC)
+
+
+patata = data.frame("IC SE" = c(a_se,b_se,c_se,d_se,e_se,f_se), "IC RE" = c(a_re,b_re,c_re,d_re,e_re,f_re), "Media de clusters generados" = media_clusters_wsc, "Tamaño medio del cluster" = media_tamaños_wsc, "Total clusters" = terminos)
+rownames(patata) = c("ORA", "GSEA", "elim", "weight","PC","weight01")
+
+patata %>% 
+kbl(col.names = c("IC SE ","IC RE", "Media de clusters", "Media de tamaño", "Total términos")) %>%
+  kable_paper("hover", full_width = F)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

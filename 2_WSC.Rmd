@@ -1,0 +1,178 @@
+---
+title: "Script final"
+author: "Borja Gómez"
+date: "18/0362022"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: paper
+    fig_width: 6
+    fig_height: 4
+vignette: >
+  %\VignetteIndexEntry{dataset}
+  %\VignetteEngine{knitr::rmarkdown}
+  \usepackage[utf8]{inputenc}
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+
+Cargamos los paquetes
+```{r}
+pacman::p_load(WebGestaltR,Hmisc, stringr)
+```
+
+
+ IMP: Hay dos opciones, A) realizar el WSC con los datos en sucio o B) realizar
+      primero un filtrado eliminando aquellos términos con > 1000 genes
+      anotados. Para el trabajo y el workflok de los scripts se ha utilizado la
+      opción B.
+
+```{bash}
+mkdir analisis/procesados
+mkdir analisis/procesados/wsc
+mkdir analisis/procesados/filtrado
+mkdir analisis/procesados/estandar
+```
+
+
+### OPCION WSC
+
+```{r}
+load(paste("analisis/enriquecimiento/lista_dataframes_resultados.rda", sep = "/"))
+pvalor = 0.05
+
+###############################################################################
+
+fisher = lista_resultados[[1]][as.numeric(lista_resultados[[1]]$ORA)<=pvalor,]
+fisher = fisher[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "ORA")]
+lista_resultados[[1]] = fisher
+
+gsea<-lista_resultados[[2]][as.numeric(lista_resultados[[2]]$GSEA)<=pvalor,]
+gsea = gsea[,c(1,2,3,4,5,7,8,6)] # MUTEAR PARA NEURONAS/DESMUTEAR PARA ASTROCITOS
+lista_resultados[[2]] = gsea
+
+elim<-lista_resultados[[3]][as.numeric(lista_resultados[[3]]$elim)<=pvalor,]
+elim = elim[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "elim")]
+lista_resultados[[3]] = elim
+
+weight<-lista_resultados[[4]][as.numeric(lista_resultados[[4]]$weight)<=pvalor,]
+weight = weight[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "weight")]
+lista_resultados[[4]] = weight
+
+pa<-lista_resultados[[5]][as.numeric(lista_resultados[[5]]$PC)<=pvalor,]
+pa = pa[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "PC")]
+lista_resultados[[5]] = pa
+
+weight01<-lista_resultados[[6]][(lista_resultados[[6]]$weight01)<=pvalor,]
+weight01 = weight01[,c("GO.ID", "Term", "Annotated", "Significant", "Expected", "Genes", "weight01")]
+lista_resultados[[6]] = weight01
+
+################################################################################
+
+metodos = list(fisher, gsea, elim, weight, pa, weight01)
+
+################################################################################
+nueva_lista = list()
+for (numero in 1:length(metodos)){
+  a<- metodos[[numero]]
+  
+  lista<-a$Genes
+  names(lista) = a$GO.ID
+  cost = (1/(-log(as.numeric(a[,dim(a)[2]]))))
+  
+  match<-weightedSetCover(lista, cost, length(lista), nThreads = 8)
+  patata <- a[a$GO.ID %in% match$topSets,]
+  
+  nueva_lista[[numero]] = patata
+}
+################################################################################
+
+go_term_sig_wsc = list()
+
+for (numero in 1:6){
+  a<-nueva_lista[[numero]]
+  valores = as.numeric(a[,dim(a)[2]])
+  names(valores) = a$GO.ID
+  go_term_sig_wsc[[numero]] = valores
+}
+
+################################################################################
+save(lista_resultados, file = paste("analisis/enriquecimiento/lista_dataframes_resultados.rda", sep = "/"))
+save(go_term_sig_wsc, file = paste("analisis/procesados/wsc/terminos_significativos.rda", sep = "/"))
+save(nueva_lista, file = paste("analisis/procesados/wsc/lista_dataframes_resultados.rda", sep = "/"))
+
+################################################################################
+```
+
+
+
+### OPCION FILTRADO
+
+```{r}
+load(paste("analisis/enriquecimiento/lista_dataframes_resultados.rda", sep = "/"))
+pvalor = 0.05
+
+################################################################################
+
+fisher = lista_resultados[[1]][as.numeric(lista_resultados[[1]]$ORA)<=pvalor,]
+
+gsea<-lista_resultados[[2]][as.numeric(lista_resultados[[2]]$GSEA)<=pvalor,]
+
+elim<-lista_resultados[[3]][as.numeric(lista_resultados[[3]]$elim)<=pvalor,]
+
+weight<-lista_resultados[[4]][as.numeric(lista_resultados[[4]]$weight)<=pvalor,]
+
+pa<-lista_resultados[[5]][as.numeric(lista_resultados[[5]]$PC)<=pvalor,]
+
+weight01<-lista_resultados[[6]][(lista_resultados[[6]]$weight01)<=pvalor,]
+
+
+################################################################################
+
+metodos = list(fisher, gsea, elim, weight, pa, weight01)
+
+################################################################################
+
+lista_filtrado = list()
+
+for (numero in 1:length(metodos)){
+  a<- metodos[[numero]]
+  
+  a = a[a$Annotated < 1000,] 
+  lista<-a$Genes
+  names(lista) = a$GO.ID
+  cost = (1/(-log(as.numeric(a[,dim(a)[2]]))))
+  
+  match<-weightedSetCover(lista, cost, length(lista), nThreads = 8)
+  patata <- a[a$GO.ID %in% match$topSets,]
+  
+  lista_filtrado[[numero]] = patata
+}
+
+################################################################################
+
+go_term_sig_wsc_filtrado = list()
+
+for (numero in 1:6){
+  a<-lista_filtrado[[numero]]
+  valores = as.numeric(a[,dim(a)[2]])
+  names(valores) = a$GO.ID
+  go_term_sig_wsc_filtrado[[numero]] = valores
+}
+
+################################################################################
+
+save(go_term_sig_wsc_filtrado, file = paste("analisis/procesados/filtrado/terminos_significativos_filtrado.rda", sep = "/"))
+save(lista_filtrado, file = paste("analisis/procesados/filtrado/filtrado_lista_dataframes_resultados.rda", sep = "/"))
+
+################################################################################
+
+```
+
+
